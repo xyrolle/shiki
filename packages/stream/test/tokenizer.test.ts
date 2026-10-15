@@ -100,3 +100,20 @@ it('handles CRLF line endings like codeToTokens', async () => {
     expect(tokensToHtml(tokens)).toBe(onepass)
   }
 })
+
+it('reports token offsets relative to the whole code', async () => {
+  const highlighter = await createHighlighter({
+    langs: ['vue'],
+    themes: ['vitesse-dark', 'vitesse-light'],
+  })
+
+  for (const code of [fixture.trimEnd(), fixture.trimEnd().replaceAll('\n', '\r\n')]) {
+    const onepass = highlighter.codeToTokens(code, tokensOptions).tokens.flat()
+    for (const size of [1, 5, code.length]) {
+      const tokens = await tokenizeInChunks({ highlighter, ...tokensOptions }, code, size)
+      expect(tokens.filter(token => token.content !== '\n')).toEqual(onepass)
+      for (const token of tokens)
+        expect(code.slice(token.offset, token.offset + token.content.length)).toBe(token.content)
+    }
+  }
+})

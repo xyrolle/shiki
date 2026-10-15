@@ -9,6 +9,10 @@ export class ShikiStreamTokenizer {
   public tokensUnstable: ThemedToken[] = []
 
   public lastUnstableCodeChunk: string = ''
+  /**
+   * Offset of `lastUnstableCodeChunk` in the whole streamed code
+   */
+  public lastUnstableCodeOffset: number = 0
   public lastStableGrammarState: GrammarState | undefined
 
   constructor(
@@ -21,13 +25,14 @@ export class ShikiStreamTokenizer {
    * Enqueue a chunk of code to the buffer.
    */
   async enqueue(chunk: string): Promise<ShikiStreamTokenizerEnqueueResult> {
+    const offset = this.lastUnstableCodeOffset
     const chunkLines = splitLines(this.lastUnstableCodeChunk + chunk)
 
     const stable: ThemedToken[] = []
     let unstable: ThemedToken[] = []
     const recall = this.tokensUnstable.length
 
-    chunkLines.forEach(([line], i) => {
+    chunkLines.forEach(([line, lineOffset], i) => {
       const isLastLine = i === chunkLines.length - 1
 
       const result = this.options.highlighter.codeToTokens(line, {
@@ -35,8 +40,11 @@ export class ShikiStreamTokenizer {
         grammarState: this.lastStableGrammarState,
       })
       const tokens = result.tokens[0] // only one line
+      for (const token of tokens)
+        token.offset += offset + lineOffset
+      // the `\n` is the last character before the next line, after any `\r`
       if (!isLastLine)
-        tokens.push({ content: '\n', offset: 0 })
+        tokens.push({ content: '\n', offset: offset + chunkLines[i + 1][1] - 1 })
 
       if (!isLastLine) {
         this.lastStableGrammarState = result.grammarState
@@ -45,6 +53,7 @@ export class ShikiStreamTokenizer {
       else {
         unstable = tokens
         this.lastUnstableCodeChunk = line
+        this.lastUnstableCodeOffset = offset + lineOffset
       }
     })
 
@@ -62,6 +71,7 @@ export class ShikiStreamTokenizer {
     const stable = this.tokensUnstable
     this.tokensUnstable = []
     this.lastUnstableCodeChunk = ''
+    this.lastUnstableCodeOffset = 0
     this.lastStableGrammarState = undefined
     return {
       stable,
@@ -72,6 +82,7 @@ export class ShikiStreamTokenizer {
     this.tokensStable = []
     this.tokensUnstable = []
     this.lastUnstableCodeChunk = ''
+    this.lastUnstableCodeOffset = 0
     this.lastStableGrammarState = undefined
   }
 
@@ -80,6 +91,7 @@ export class ShikiStreamTokenizer {
       this.options,
     )
     clone.lastUnstableCodeChunk = this.lastUnstableCodeChunk
+    clone.lastUnstableCodeOffset = this.lastUnstableCodeOffset
     clone.tokensUnstable = this.tokensUnstable
     clone.tokensStable = this.tokensStable
     clone.lastStableGrammarState = this.lastStableGrammarState

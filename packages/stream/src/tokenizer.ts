@@ -1,5 +1,6 @@
 import type { GrammarState, ThemedToken } from '@shikijs/core'
 import type { ShikiStreamTokenizerEnqueueResult, ShikiStreamTokenizerOptions } from './types'
+import { splitLines } from '@shikijs/core'
 
 export class ShikiStreamTokenizer {
   public readonly options: ShikiStreamTokenizerOptions
@@ -20,13 +21,13 @@ export class ShikiStreamTokenizer {
    * Enqueue a chunk of code to the buffer.
    */
   async enqueue(chunk: string): Promise<ShikiStreamTokenizerEnqueueResult> {
-    const chunkLines = (this.lastUnstableCodeChunk + chunk).split('\n')
+    const chunkLines = splitLines(this.lastUnstableCodeChunk + chunk)
 
     const stable: ThemedToken[] = []
     let unstable: ThemedToken[] = []
     const recall = this.tokensUnstable.length
 
-    chunkLines.forEach((line, i) => {
+    chunkLines.forEach(([line], i) => {
       const isLastLine = i === chunkLines.length - 1
 
       const result = this.options.highlighter.codeToTokens(line, {

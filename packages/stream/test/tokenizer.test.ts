@@ -1,3 +1,4 @@
+import type { ThemedToken } from 'shiki'
 import type { ShikiStreamTokenizerOptions } from '../src'
 import { createHighlighter } from 'shiki'
 import { expect, it } from 'vitest'
@@ -63,4 +64,39 @@ it('exported', async () => {
     .toMatchFileSnapshot(`output/onepass.html`)
 
   expect.soft(merged).toBe(onepass)
+})
+
+const tokensOptions = {
+  lang: 'vue',
+  themes: {
+    dark: 'vitesse-dark',
+    light: 'vitesse-light',
+  },
+} as const
+
+async function tokenizeInChunks(options: ShikiStreamTokenizerOptions, code: string, size: number): Promise<ThemedToken[]> {
+  const streamer = new ShikiStreamTokenizer(options)
+  for (let i = 0; i < code.length; i += size)
+    await streamer.enqueue(code.slice(i, i + size))
+  return [...streamer.tokensStable, ...streamer.close().stable]
+}
+
+it('handles CRLF line endings like codeToTokens', async () => {
+  const highlighter = await createHighlighter({
+    langs: ['vue'],
+    themes: ['vitesse-dark', 'vitesse-light'],
+  })
+  const code = fixture.trimEnd().replaceAll('\n', '\r\n')
+  const onepass = tokensToHtml(
+    highlighter.codeToTokens(code, tokensOptions)
+      .tokens
+      .flatMap((i, idx) => idx === 0 ? i : [{ content: '\n', offset: 0 }, ...i]),
+  )
+
+  // A chunk size of 1 splits every `\r\n` across two chunks
+  for (const size of [1, 5, code.length]) {
+    const tokens = await tokenizeInChunks({ highlighter, ...tokensOptions }, code, size)
+    expect(tokens.filter(token => token.content.includes('\r'))).toEqual([])
+    expect(tokensToHtml(tokens)).toBe(onepass)
+  }
 })
